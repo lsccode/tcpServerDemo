@@ -1,6 +1,20 @@
 #ifndef _NET_COMMON_H__
 #define _NET_COMMON_H__
 
+#include <stdio.h>
+#include <errno.h>
+#include <time.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <string.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <netinet/in.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+
 #define SERVICE_PORT (8123)
 typedef struct tagNetMsg
 {

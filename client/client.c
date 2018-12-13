@@ -1,17 +1,3 @@
-#include <stdio.h>
-#include <errno.h>
-#include <time.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <string.h>
-#include <stdlib.h>
-#include <signal.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-
 #include "ev.h"
 #include "netcommon.h"
 
@@ -51,7 +37,7 @@ int createTcpClient(char *ipaddr)
     result = connect(sockfd, (struct sockaddr *)&address, len);
 
     if(result == -1) {
-        debug("connect %s:%d error ,%d : %s,",ipaddr,9734,errno,strerror(errno));
+        debug("connect %s:%d error ,%s(%d)!\n",ipaddr,SERVICE_PORT,strerror(errno),errno);
         close(sockfd);
         sockfd = -1;
         //exit(1);
@@ -150,6 +136,12 @@ int main(int argc, char *argv[])
     struct sockaddr_in addr;
     int len;
     tClientInfo  *pstClient = (tClientInfo*)malloc (sizeof(tClientInfo));
+    
+    if(sockfd < 0)
+    {
+        debug("can not connected %s:%d!\n", argv[1], SERVICE_PORT);
+        return -1;
+    }
     
     getpeername(sockfd, (struct sockaddr *)&addr, &len);
     inet_ntop(AF_INET,&(addr.sin_addr),pstClient->ipaddr,sizeof(pstClient->ipaddr)); 

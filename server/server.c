@@ -1,14 +1,3 @@
-#include <stdio.h>
-#include <errno.h>
-#include <time.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <string.h>
-#include <stdlib.h>
-#include <signal.h>
-#include <netinet/in.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include "ev.h"
 #include "netcommon.h"
 
