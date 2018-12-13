@@ -9,6 +9,13 @@ typedef struct tagNetMsg
     char data[0];
 }tNetMsg;
 
+typedef struct tagClientInfo
+{
+    int fd;
+    char ipaddr[128];
+    int  port;
+}tClientInfo;
+
 #define M_START_RAW (1)
 #define M_BUFFER_SIZE (2*1024)
 #define M_PACKET_SIZE (1500)

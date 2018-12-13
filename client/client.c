@@ -1,8 +1,10 @@
 #include <stdio.h>
-#include <time.h>
 #include <errno.h>
-#include <stdlib.h>
+#include <time.h>
+#include <unistd.h>
+#include <fcntl.h>
 #include <string.h>
+#include <stdlib.h>
 #include <signal.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -73,14 +75,16 @@ void clientRead(struct ev_loop *loop, struct ev_io *watcher, int revents)
         {
             sum += read;
             if(++count%(M_PRINT_RATE) == 0)
-                debug("total recv %llu, count %u,message type (%u)\n",sum,count,pstNetMsg->ulMsgType);
+                debug("recv %llu, count %u,message type (%u)\n",sum,count,pstNetMsg->ulMsgType);
             //write(savefd,buffer,read);
         }
         else
         {
-            debug("recv error %d,disconnect...\n",read);
+            tClientInfo  *pstClient = (tClientInfo *)watcher->data;
+            debug("%s:%d fd(%d) recv error %d,disconnected!\n", pstClient->ipaddr,pstClient->port, watcher->fd,read);
+            
             debug("total recv %llu, count %u,message type (%u)\n",sum,count,pstNetMsg->ulMsgType);
-            //close(watcher->fd);
+            close(watcher->fd);
             ev_io_stop(loop, watcher);
         }
     }
@@ -113,6 +117,23 @@ void sigpipe(int sig)
     return;
 }
 
+void signalCallback(EV_P_ ev_signal *w, int revents)
+{
+	//debug("server recv signal=%d\n",sig);
+	// this causes the innermost ev_run to stop iterating
+	//ev_break (EV_A_ EVBREAK_ONE);
+	if(w->signum == SIGINT)
+	{
+		debug("server recv SIGINT(%d)\n",w->signum);
+        exit(0);
+	}
+    
+    if(w->signum == SIGPIPE)
+    {
+        debug("server recv SIGPIPE(%d)\n",w->signum);
+    }
+}
+
 int main(int argc, char *argv[])
 {
     if(argc != 2)
@@ -126,11 +147,27 @@ int main(int argc, char *argv[])
     struct ev_loop *loop = ev_default_loop(0);
     int sockfd = createTcpClient(argv[1]);
     struct ev_io evClient;
+    struct sockaddr_in addr;
+    int len;
+    tClientInfo  *pstClient = (tClientInfo*)malloc (sizeof(tClientInfo));
+    
+    getpeername(sockfd, (struct sockaddr *)&addr, &len);
+    inet_ntop(AF_INET,&(addr.sin_addr),pstClient->ipaddr,sizeof(pstClient->ipaddr)); 
+    pstClient->port = ntohs(addr.sin_port);
+    evClient.data = pstClient;
+    debug("%s:%d fd(%d),connected!\n", pstClient->ipaddr, pstClient->port, sockfd);
     
     ev_io_init(&evClient, clientRead, sockfd, EV_READ | EV_WRITE);
     ev_io_start(loop, &evClient);
 
-    signal(SIGPIPE,sigpipe);//捕捉第二次write的SIGPIPE信号,默认终止进程
+    //signal(SIGPIPE,sigpipe);
+    ev_signal watcher_signalint;
+	ev_signal_init(&watcher_signalint, signalCallback,SIGINT);
+	ev_signal_start (loop, &watcher_signalint);
+    
+    ev_signal watcher_signalpipe;
+	ev_signal_init(&watcher_signalpipe, signalCallback,SIGPIPE);
+	ev_signal_start (loop, &watcher_signalpipe);
     
     getLocalTimeStr(filename);
     

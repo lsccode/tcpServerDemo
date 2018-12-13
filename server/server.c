@@ -25,6 +25,7 @@ unsigned int count = 0; //100*1000*1000;
 struct timespec starttime = {0, 0};
 struct timespec endtime = {0, 0};
 unsigned int diff = 0;
+
 void passiveClientWrite(struct ev_loop *loop, struct ev_io *watcher, int revents);
 //read client 
 void passiveClientRead(struct ev_loop *loop, struct ev_io *watcher, int revents){
@@ -57,7 +58,17 @@ void passiveClientRead(struct ev_loop *loop, struct ev_io *watcher, int revents)
                 gstClientArray.szClientFd[index] = 0;
             }
         }
-        debug("someone disconnected.\n");
+        
+        tClientInfo  *pstClient = (tClientInfo  *)watcher->data;
+        if(NULL != pstClient)
+        {
+            debug("%s:%d fd(%d),disconnected!\n", pstClient->ipaddr,pstClient->port, watcher->fd);
+        }
+        else
+        {
+            debug("someone disconnect fd(%d)\n", watcher->fd);
+        }
+        
         close(watcher->fd);
         ev_io_stop(loop,watcher);
         free(watcher);
@@ -109,7 +120,7 @@ void passiveClientWrite(struct ev_loop *loop, struct ev_io *watcher, int revents
         diff = endtime.tv_sec - starttime.tv_sec;
         if(diff == 0)
             diff = 1;
-        debug("total send %llu,count = %u,Speed %llu MB/s,diff = %u \n",sum,count,sum/(diff*1024*1024),diff);
+        debug("total send (%llu MB ~= %llu B),count = %u,Speed %0.2f MB/s,diff = %u \n",sum/(1024*1024),sum,count,sum*1.0/(diff*1024*1024),diff);
         return;
     }
     if(count % (M_PRINT_RATE) == 0)
@@ -118,7 +129,7 @@ void passiveClientWrite(struct ev_loop *loop, struct ev_io *watcher, int revents
         diff = endtime.tv_sec - starttime.tv_sec;
         if(diff == 0)
             diff = 1;
-        debug("send %llu MB,count = %u,Speed %llu MB/s,diff = %u \n",sum/(1024*1024),count,sum/(diff*1024*1024),diff);
+        debug("send %llu MB,count = %u,Speed %0.2f MB/s,diff = %u \n",sum/(1024*1024),count,sum*1.0/(diff*1024*1024),diff);
     }
     
 
@@ -133,6 +144,7 @@ void serverAcceptRead(struct ev_loop *loop, struct ev_io *watcher, int revents)
     int index = 0;
     
     struct ev_io *w_client = (struct ev_io*) malloc (sizeof(struct ev_io));
+    tClientInfo  *pstClient = (tClientInfo*)malloc (sizeof(tClientInfo));
     
     if(EV_ERROR & revents)
     {
@@ -140,7 +152,7 @@ void serverAcceptRead(struct ev_loop *loop, struct ev_io *watcher, int revents)
         return;
     }
     
-    if(NULL == w_client)
+    if(NULL == w_client || NULL == pstClient)
     {
         debug("create client error!\n");
         return;
@@ -168,10 +180,15 @@ void serverAcceptRead(struct ev_loop *loop, struct ev_io *watcher, int revents)
         close(client_sd);
     }
     else
-    {
-        debug("someone connected.\n");
-        ev_io_init(w_client, passiveClientRead, client_sd, EV_READ);
+    {      
+        inet_ntop(AF_INET,&(client_addr.sin_addr),pstClient->ipaddr,sizeof(pstClient->ipaddr)); 
+        pstClient->port = ntohs(client_addr.sin_port);
+        
+        w_client->data = pstClient;
+        ev_io_init(w_client, passiveClientRead, client_sd, EV_READ);       
         ev_io_start(loop, w_client);
+        
+        debug("%s:%d fd(%d) connected!\n",pstClient->ipaddr,pstClient->port,w_client->fd);
     }
     
 
@@ -207,6 +224,22 @@ void sigpipe(int sig)
     debug("server recv signal=%d\n",sig);
     return;
 }
+void signalCallback(EV_P_ ev_signal *w, int revents)
+{
+	//debug("server recv signal=%d\n",sig);
+	// this causes the innermost ev_run to stop iterating
+	//ev_break (EV_A_ EVBREAK_ONE);
+	if(w->signum == SIGINT)
+	{
+		debug("server recv SIGINT(%d)\n",w->signum);
+        exit(0);
+	}
+    
+    if(w->signum == SIGPIPE)
+    {
+        debug("server recv SIGPIPE(%d)\n",w->signum);
+    }
+}
 int main()
 {
     struct ev_loop *loop = ev_default_loop(0);
@@ -216,7 +249,14 @@ int main()
     ev_io_init(&evServer, serverAcceptRead, serverfd, EV_READ);
     ev_io_start(loop, &evServer);
     
-    signal(SIGPIPE,sigpipe);
+    ev_signal watcher_signalint;
+	ev_signal_init(&watcher_signalint, signalCallback,SIGINT);
+	ev_signal_start (loop, &watcher_signalint);
+    
+    ev_signal watcher_signalpipe;
+	ev_signal_init(&watcher_signalpipe, signalCallback,SIGPIPE);
+	ev_signal_start (loop, &watcher_signalpipe);
+    //signal(SIGPIPE,sigpipe);
     while (1)
     {
         ev_loop(loop, 0);
