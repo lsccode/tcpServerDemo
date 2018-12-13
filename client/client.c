@@ -58,10 +58,32 @@ int createTcpClient(char *ipaddr)
     return sockfd;
 }
 
+unsigned int count = 0;
+unsigned long long sum = 0;
+
 void clientRead(struct ev_loop *loop, struct ev_io *watcher, int revents)
 {
-#define BUFFER_SIZE (3*1024/2)
-    char buffer[BUFFER_SIZE] = {0};    
+    char buffer[M_BUFFER_SIZE] = {0};    
+    
+    if(revents & EV_READ)
+    {
+        tNetMsg *pstNetMsg = (tNetMsg *)buffer;
+        ssize_t read = recv(watcher->fd, buffer, M_PACKET_SIZE, 0);
+        if(read > 0)
+        {
+            sum += read;
+            if(++count%(M_PRINT_RATE) == 0)
+                debug("total recv %llu, count %u,message type (%u)\n",sum,count,pstNetMsg->ulMsgType);
+            //write(savefd,buffer,read);
+        }
+        else
+        {
+            debug("recv error %d,disconnect...\n",read);
+            debug("total recv %llu, count %u,message type (%u)\n",sum,count,pstNetMsg->ulMsgType);
+            //close(watcher->fd);
+            ev_io_stop(loop, watcher);
+        }
+    }
     
     if(revents & EV_WRITE)
     {
@@ -82,21 +104,7 @@ void clientRead(struct ev_loop *loop, struct ev_io *watcher, int revents)
         }
     }
     
-    if(revents & EV_READ)
-    {
-        tNetMsg *pstNetMsg = (tNetMsg *)buffer;
-        ssize_t read = recv(watcher->fd, buffer, BUFFER_SIZE, 0);
-        if(read > 0)
-        {
-            debug("recv %d, message type (%u)\n",read,pstNetMsg->ulMsgType);
-            write(savefd,buffer,read);
-        }
-        else
-        {
-            debug("recv error %d\n",read);
-            ev_io_stop(loop, watcher);
-        }
-    }
+ 
 }
 
 void sigpipe(int sig)
@@ -104,8 +112,6 @@ void sigpipe(int sig)
     debug("server recv signal=%d\n",sig);
     return;
 }
-
-
 
 int main(int argc, char *argv[])
 {

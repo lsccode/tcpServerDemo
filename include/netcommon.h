@@ -10,7 +10,10 @@ typedef struct tagNetMsg
 }tNetMsg;
 
 #define M_START_RAW (1)
-
+#define M_BUFFER_SIZE (2*1024)
+#define M_PACKET_SIZE (1500)
+#define M_PRINT_RATE (1000*30)
+#define M_MAX_SEND_COUNT (1000*300)
 
 #define debug(format,...) \
     do{ \

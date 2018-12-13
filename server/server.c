@@ -1,14 +1,17 @@
 #include <stdio.h>
 #include <errno.h>
+#include <time.h>
+#include <unistd.h>
+#include <fcntl.h>
 #include <string.h>
 #include <stdlib.h>
 #include <signal.h>
 #include <netinet/in.h>
-
+#include <sys/types.h>
+#include <sys/stat.h>
 #include "ev.h"
 #include "netcommon.h"
 
-#define BUFFER_SIZE 1024
 #define M_MAX_CLIENT_NUMBER (1024)
 typedef struct tagClientfdArray
 {
@@ -17,10 +20,15 @@ typedef struct tagClientfdArray
 }tClientfdArray;
 
 tClientfdArray gstClientArray = {0};
-
+unsigned long long sum = 0;
+unsigned int count = 0; //100*1000*1000;
+struct timespec starttime = {0, 0};
+struct timespec endtime = {0, 0};
+unsigned int diff = 0;
+void passiveClientWrite(struct ev_loop *loop, struct ev_io *watcher, int revents);
 //read client 
 void passiveClientRead(struct ev_loop *loop, struct ev_io *watcher, int revents){
-    char buffer[BUFFER_SIZE];
+    char buffer[M_BUFFER_SIZE];
     ssize_t read;
     int index = 0;
     
@@ -31,7 +39,7 @@ void passiveClientRead(struct ev_loop *loop, struct ev_io *watcher, int revents)
     }
     
 //recv 
-    read = recv(watcher->fd, buffer, BUFFER_SIZE, 0);
+    read = recv(watcher->fd, buffer, M_BUFFER_SIZE, 0);
     
     if(read < 0)
     {
@@ -64,10 +72,56 @@ void passiveClientRead(struct ev_loop *loop, struct ev_io *watcher, int revents)
             debug("get the message ulMsgType :%d\n",pstNetMsg->ulMsgType);
             debug("start send rawdata\n");
             pstNetMsg->ulMsgType = 10000;
-            send(watcher->fd,buffer,sizeof(tNetMsg),0);
+            clock_gettime(CLOCK_MONOTONIC, &starttime);
+            ev_io_stop(loop, watcher);
+            ev_io_init(watcher, passiveClientWrite, watcher->fd, EV_WRITE);
+            ev_io_start(loop, watcher);
+           
+                
         }
         
     }
+}
+
+void passiveClientWrite(struct ev_loop *loop, struct ev_io *watcher, int revents)
+{
+    char buffer[M_BUFFER_SIZE];
+    
+    int sd = send(watcher->fd,buffer,M_PACKET_SIZE,0);
+    if(sd > 0)
+    {
+        sum += sd;
+    }
+    else
+    {
+        ev_io_stop(loop, watcher);
+        ev_io_init(watcher, passiveClientRead, watcher->fd, EV_READ);
+        ev_io_start(loop, watcher);
+        return;
+    }
+    
+    if(++count == M_MAX_SEND_COUNT)
+    {
+        clock_gettime(CLOCK_MONOTONIC, &endtime);
+        ev_io_stop(loop, watcher);
+        ev_io_init(watcher, passiveClientRead, watcher->fd, EV_READ);
+        ev_io_start(loop, watcher);
+        diff = endtime.tv_sec - starttime.tv_sec;
+        if(diff == 0)
+            diff = 1;
+        debug("total send %llu,count = %u,Speed %llu MB/s,diff = %u \n",sum,count,sum/(diff*1024*1024),diff);
+        return;
+    }
+    if(count % (M_PRINT_RATE) == 0)
+    {
+        clock_gettime(CLOCK_MONOTONIC, &endtime);
+        diff = endtime.tv_sec - starttime.tv_sec;
+        if(diff == 0)
+            diff = 1;
+        debug("send %llu MB,count = %u,Speed %llu MB/s,diff = %u \n",sum/(1024*1024),count,sum/(diff*1024*1024),diff);
+    }
+    
+
 }
 
 //accept server callback
